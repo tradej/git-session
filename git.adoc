@@ -1,6 +1,6 @@
 = Git session
 
-Sharing some git conveniences `~/.bashrc` aliases and scripts.
+Sharing some Git conveniences, `~/.bashrc` aliases, and scripts.
 
 == Create rebase and squash convenience scripts
 
@@ -10,35 +10,33 @@ Sharing some git conveniences `~/.bashrc` aliases and scripts.
 +
 [source,text]
 ----
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
-cd ~/openshift-docs
-if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-  echo "Proceeding with rebase."
-else
-  echo "This is not a git repository. Please check your path syntax."
-  exit
+OPENSHIFT_MAIN_BRANCH="main"
+OPENSHIFT_UPSTREAM_REMOTE="upstream"
+OPENSHIFT_PERSONAL_REMOTE="origin"
+
+set -e
+
+if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "ERROR: you must execute this script from the OpenShift Git repository." 1>&2
+  exit 1
 fi
 
+git fetch --all
 git stash
 
-CURRENT_BRANCH="$(git branch --show-current)"
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
-if [ $CURRENT_BRANCH != "main" ]; then
-     git checkout main >/dev/null 2>&1
-     echo "Switching from $CURRENT_BRANCH to main"
-fi
-
-git fetch upstream
-git rebase upstream/main
-git push origin main
-
-if [ $CURRENT_BRANCH != "main" ]; then
-    git checkout $CURRENT_BRANCH >/dev/null 2>&1
-    echo "Switching from main to $CURRENT_BRANCH"
-fi
+git checkout "$OPENSHIFT_MAIN_BRANCH"
+git rebase "$OPENSHIFT_UPSTREAM_REMOTE/$OPENSHIFT_MAIN_BRANCH"
+git push "$OPENSHIFT_PERSONAL_REMOTE" "$OPENSHIFT_MAIN_BRANCH"
+git checkout "$CURRENT_BRANCH"
 
 git stash pop
+
+echo "Rebase successful." 1>&2
+
 ----
 
 . Create the file `git-squash-commmits` in `/usr/local/bin`:
@@ -47,31 +45,33 @@ git stash pop
 +
 [source,text]
 ----
-#!/bin/bash
+#!/usr/bin/env bash
 
-#Ensure you are executing the script from within a git repository.
-if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-  echo "Proceeding with squashing commits."
-else
-  echo "This is not a git repository. Please check your path syntax."
-  exit
+OPENSHIFT_MAIN_BRANCH="main"
+OPENSHIFT_PERSONAL_REMOTE="origin"
+
+set -e
+
+#Check if we're in a Git repository
+if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "ERROR: you must execute this script from the OpenShift Git repository." 1>&2
+  exit 1
 fi
 
 #Get the current branch.
 CURRENT_BRANCH="$(git branch --show-current)"
+
 #Ensure you are not working off of the main branch.
-if [$CURRENT_BRANCH == "main" ]; then
-  echo "ERROR: You should only execute this script on a working branch."
-  exit
+if [ "$CURRENT_BRANCH" == "$OPENSHIFT_MAIN_BRANCH" ]; then
+  echo "ERROR: you must not execute this script on the $OPENSHIFT_MAIN_BRANCH branch."
+  exit 1
 fi
-echo "You are currently on branch: $CURRENT_BRANCH"
 
 #Pull with rebase in case there are remote/online edits to the PR.
 git pull --rebase
 
 #Get the base branch. This will allow you to specify a release branch if necessary.
-echo "What is the base branch for this branch? (e.g., main, enterprise-x.y)"
-read BASE_BRANCH
+read -p "Enter the name of the base branch for this branch? (e.g., main, enterprise-x.y): " BASE_BRANCH 
 
 #Get the commit count using the base branch.
 COMMIT_COUNT=$(git rev-list --count --no-merges $BASE_BRANCH..HEAD)
@@ -86,28 +86,28 @@ fi
 if [ $COMMIT_COUNT -gt 5 ]; then
   echo -e "Hmm...I'm counting $COMMIT_COUNT commits."
   echo "That seems a bit high."
-  echo "Check your pull request commit count in the GitHub PR. How many commits do you want to squash?"
-  read COMMIT_COUNT
+  echo "Check your pull request commit count in the GitHub PR."
+  read -p "How many commits do you want to squash? " COMMIT_COUNT
 fi
 
+#Check that a numerical value greater than zero was entered
+test "$COMMIT_COUNT" -gt 0
+
 #Prompt them on the commit count and branch name before commiting.
-echo "Do you want to squash $COMMIT_COUNT commits on branch $CURRENT_BRANCH to 1 commit?"
-echo "Answer Y/N followed by [Enter]: "
-read ANSWER
+read -p "Do you want to squash $COMMIT_COUNT commits on branch $CURRENT_BRANCH to 1 commit? [y/N] " ANSWER
 
 #Test to see if the user answers yes.
 if [ $ANSWER == "Y" -o $ANSWER = "y" ];
 then
   git reset --soft HEAD~$COMMIT_COUNT
   echo "Squashing $COMMIT_COUNT commits into 1 commit."
-  echo "Provide a commit message."
-  read COMMIT_MESSAGE
-  git commit -m "$CURRENT_BRANCH: $COMMIT_MESSAGE."
-  git push origin +$CURRENT_BRANCH
-else
-  echo "I didn't get a Y or y. Buh bye!"
-  exit
+  read -p "Provide a commit message: " COMMIT_MESSAGE 
+  git commit -m "$CURRENT_BRANCH: $COMMIT_MESSAGE"
+  git push --force-with-lease
 fi
+
+echo "Squash successful." 1>&2
+
 ----
 
 . Update permissions for the files you just created:
@@ -136,8 +136,8 @@ cd to ocp docs folder, and try out the commands!
 [source,text]
 ----
 alias git-open-modified='atom $(git diff-tree HEAD HEAD~1 --no-commit-id --name-only -r)'
-alias git-push-force='git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
-alias git-commend-push-force='git commit --amend --reuse-message HEAD; git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
+alias git-push-force='git push --force-with-lease'
+alias git-commend-push-force='git commit --amend --reuse-message HEAD; git push --force-with-lease'
 alias git-log-branch='git log --graph --abbrev-commit --decorate "$(git rev-parse --abbrev-ref HEAD)"'
 ----
 +
@@ -154,7 +154,7 @@ $ source ~/.bashrc
 +
 [source,terminal]
 ----
-$ git fetch upstream
+$ git fetch --all
 ----
 +
 [source,terminal]
@@ -162,22 +162,26 @@ $ git fetch upstream
 $ git rebase upstream/main
 ----
 +
-If you are working on an enterprise branch for release notes:
+If you are working on an enterprise branch for release notes (replace `$VERSION` with the version you are working on):
 +
 [source,terminal]
 ----
-$ git rebase upstream/enterprise-4.x
+$ git rebase upstream/enterprise-$VERSION
 ----
 
 == Git some
 
 === Be aware of open files when switching branches!
 
-When you switch branches, the files in your editor will remain open. Be careful when closing them. If you inadvertently save the file, you run the risk of accidentally adding the file to the wrong branch.
+When you switch branches, the files in your editor will remain open.
+Be careful when closing them.
+If you inadvertently save the file, you run the risk of accidentally adding the file to the wrong branch.
 
 === git checkout -b my-branch / git checkout my-branch
 
-Be careful with the `-b` switch. `-b` means: "Create a new branch based on the current branch and give it this name". `git checkout my-branch` just means change to the named branch.
+Be careful with the `-b` switch.
+`-b` means: "Create a new branch based on the current branch and give it this name".
+`git checkout my-branch` just means change to the named branch.
 
 === Oh no! I'm in the middle of an incorrect rebase!
 
@@ -235,7 +239,7 @@ $ git revert 16bf19550b9f49bceec7fda7f765040357e0bcaf
 +
 [source,terminal]
 ----
-$ git-push-force
+$ git push
 ----
 
 === Oh no! I want to reset to the last good commit on my local branch
