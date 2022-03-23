@@ -138,6 +138,7 @@ cd to ocp docs folder, and try out the commands!
 alias git-open-modified='atom $(git diff-tree HEAD HEAD~1 --no-commit-id --name-only -r)'
 alias git-push-force='git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
 alias git-commend-push-force='git commit --amend --reuse-message HEAD; git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
+alias git-log-branch='git log --graph --abbrev-commit --decorate "$(git rev-parse --abbrev-ref HEAD)"'
 ----
 +
 [source,terminal]
@@ -224,7 +225,7 @@ $ git-push-force
 +
 [source,terminal]
 ----
-$ git log
+$ git-log-branch
 ----
 +
 [source,terminal]
@@ -243,7 +244,7 @@ $ git-push-force
 +
 [source,terminal]
 ----
-$ git log
+$ git-log-branch
 ----
 +
 [source,terminal]
