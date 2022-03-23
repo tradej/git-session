@@ -1,0 +1,272 @@
+= Git session
+
+Sharing some git conveniences `~/.bashrc` aliases and scripts.
+
+== Create a rebase script
+
+. Create the file `git-rebase-ocp-main` in `/usr/local/bin`:
+
+.. `sudo atom /usr/local/bin/git-rebase-ocp-main`
++
+[source,text]
+----
+#!/usr/bin/bash
+
+cd ~/openshift-docs
+if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "Proceeding with rebase."
+else
+  echo "This is not a git repository. Please check your path syntax."
+  exit
+fi
+
+git stash
+
+CURRENT_BRANCH="$(git branch --show-current)"
+
+if [ $CURRENT_BRANCH != "main" ]; then
+     git checkout main >/dev/null 2>&1
+     echo "Switching from $CURRENT_BRANCH to main"
+fi
+
+git fetch upstream
+git rebase upstream/main
+git push origin main
+
+if [ $CURRENT_BRANCH != "main" ]; then
+    git checkout $CURRENT_BRANCH >/dev/null 2>&1
+    echo "Switching from main to $CURRENT_BRANCH"
+fi
+
+git stash pop
+----
+
+. Create the file `git-squash-commmits` in `/usr/local/bin`:
+
+.. `sudo atom /usr/local/bin/git-squash-commits`
++
+[source,text]
+----
+#!/bin/bash
+
+#Ensure you are executing the script from within a git repository.
+if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "Proceeding with squashing commits."
+else
+  echo "This is not a git repository. Please check your path syntax."
+  exit
+fi
+
+#Get the current branch.
+CURRENT_BRANCH="$(git branch --show-current)"
+#Ensure you are not working off of the main branch.
+if [$CURRENT_BRANCH == "main" ]; then
+  echo "ERROR: You should only execute this script on a working branch."
+  exit
+fi
+echo "You are currently on branch: $CURRENT_BRANCH"
+
+#Pull with rebase in case there are remote/online edits to the PR.
+git pull --rebase
+
+#Get the base branch. This will allow you to specify a release branch if necessary.
+echo "What is the base branch for this branch? (e.g., main, enterprise-x.y)"
+read BASE_BRANCH
+
+#Get the commit count using the base branch.
+COMMIT_COUNT=$(git rev-list --count --no-merges $BASE_BRANCH..HEAD)
+
+#If commit count is less than 2, exit. There's nothing to squash.
+if [ $COMMIT_COUNT -lt 2 ]; then
+  echo "Commit count is $COMMIT_COUNT. Nothing to squash."
+  exit
+fi
+
+#If the commit count is suspiciously high, prompt the user for a commit count.
+if [ $COMMIT_COUNT -gt 5 ]; then
+  echo -e "Hmm...I'm counting $COMMIT_COUNT commits."
+  echo "That seems a bit high."
+  echo "Check your pull request commit count in the GitHub PR. How many commits do you want to squash?"
+  read COMMIT_COUNT
+fi
+
+#Prompt them on the commit count and branch name before commiting.
+echo "Do you want to squash $COMMIT_COUNT commits on branch $CURRENT_BRANCH to 1 commit?"
+echo "Answer Y/N followed by [Enter]: "
+read ANSWER
+
+#Test to see if the user answers yes.
+if [ $ANSWER == "Y" -o $ANSWER = "y" ];
+then
+  git reset --soft HEAD~$COMMIT_COUNT
+  echo "Squashing $COMMIT_COUNT commits into 1 commit."
+  echo "Provide a commit message."
+  read COMMIT_MESSAGE
+  git commit -m "$CURRENT_BRANCH: $COMMIT_MESSAGE."
+  git push origin +$CURRENT_BRANCH
+else
+  echo "I didn't get a Y or y. Buh bye!"
+  exit
+fi
+----
+
+. Update permissions for the files you just created:
++
+[source,terminal]
+----
+$ cd /usr/local/bin
+----
++
+[source,terminal]
+----
+$ sudo chmod +x git-rebase-ocp-main
+----
++
+[source,terminal]
+----
+$ sudo chmod +x git-squash-commits
+----
+
+cd to ocp docs folder, and try out the commands!
+
+== Create some convenience aliases
+
+. Open `~/.bashrc`, and add the following:
++
+[source,text]
+----
+alias git-push-force='git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
+alias git-open-modified='atom $(git diff-tree HEAD HEAD~1 --no-commit-id --name-only -r)'
+----
++
+[source,terminal]
+----
+$ source ~/.bashrc
+----
+
+== Git life savers
+
+. Set up the git aware prompt!!! Details in the OCP user manual.
+
+. *Every single time* you open a local feature branch that is based on the main branch:
++
+[source,terminal]
+----
+$ git fetch upstream
+----
++
+[source,terminal]
+----
+$ git rebase upstream/main
+----
++
+If you are working on an enterprise branch for release notes:
++
+[source,terminal]
+----
+$ git rebase upstream/enterprise-4.x
+----
+
+== Git some
+
+=== git checkout -b my-branch / git checkout my-branch
+
+Be careful with the `-b` switch. `-b` means: "Create a new branch based on the current branch and give it this name". `git checkout my-branch` just means change to the named branch.
+
+=== Oh no! I'm in the middle of an incorrect rebase!
+
+[source,terminal]
+----
+$ git rebase --abort
+----
+
+=== Oh no! I've saved some files by accident but haven't committed, and want to put every back as it was in the more recent commit
+
+[source,terminal]
+----
+$ git restore .
+----
+
+=== Oh no! I've totally ruined my feature branch and I want to return it to pristine condition before any commits
+
+* Reset hard and then push:
++
+[source,terminal]
+----
+$ git reset --hard upstream/main
+----
++
+[source,terminal]
+----
+$ git-push-force
+----
++
+For a branch based on (for example), enterprise-4.10:
++
+[source,terminal]
+----
+$ git reset --hard upstream/enterprise-4.10
+----
++
+[source,terminal]
+----
+$ git-push-force
+----
+
+=== Oh no! I've pushed an incorrect commit to a PR by mistake!
+
+* Get the commit ID for the bad commit from `git log` and revert the commit, then push your changes. A new revert commit is added to the PR.
++
+[source,terminal]
+----
+$ git log
+----
++
+[source,terminal]
+----
+$ git revert 16bf19550b9f49bceec7fda7f765040357e0bcaf
+----
++
+[source,terminal]
+----
+$ git-push-force
+----
+
+=== Oh no! I want to reset to the last good commit on my local branch
+
+* Reset to last good commit:
++
+[source,terminal]
+----
+$ git log
+----
++
+[source,terminal]
+----
+$ git reset 16bf19550b9f49bceec7fda7f765040357e0bcaf
+----
++
+[source,terminal]
+----
+$ git add .
+----
++
+[source,terminal]
+----
+$ git commit -m "reseting to last good commit"
+----
++
+[source,terminal]
+----
+$ git-push-force
+----
+
+=== Oh no! I created a PR against the wrong base:
+
+link:https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/changing-the-base-branch-of-a-pull-request[Change the base!]
+
+
+
+
+
+
