@@ -2,7 +2,7 @@
 
 Sharing some git conveniences `~/.bashrc` aliases and scripts.
 
-== Create a rebase script
+== Create rebase and squash convenience scripts
 
 . Create the file `git-rebase-ocp-main` in `/usr/local/bin`:
 
@@ -135,8 +135,9 @@ cd to ocp docs folder, and try out the commands!
 +
 [source,text]
 ----
-alias git-push-force='git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
 alias git-open-modified='atom $(git diff-tree HEAD HEAD~1 --no-commit-id --name-only -r)'
+alias git-push-force='git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
+alias git-commend-push-force='git commit --amend --reuse-message HEAD; git push origin "$(git rev-parse --abbrev-ref HEAD)" --force'
 ----
 +
 [source,terminal]
@@ -169,6 +170,10 @@ $ git rebase upstream/enterprise-4.x
 
 == Git some
 
+=== Be aware of open files when switching branches!
+
+When you switch branches, the files in your editor will remain open. Be careful when closing them. If you inadvertently save the file, you run the risk of accidentally adding the file to the wrong branch.
+
 === git checkout -b my-branch / git checkout my-branch
 
 Be careful with the `-b` switch. `-b` means: "Create a new branch based on the current branch and give it this name". `git checkout my-branch` just means change to the named branch.
@@ -180,7 +185,7 @@ Be careful with the `-b` switch. `-b` means: "Create a new branch based on the c
 $ git rebase --abort
 ----
 
-=== Oh no! I've saved some files by accident but haven't committed, and want to put every back as it was in the more recent commit
+=== Oh no! I've saved some files by accident but haven't committed, and want to put every back as it was in the most recent commit
 
 [source,terminal]
 ----
@@ -264,9 +269,3 @@ $ git-push-force
 === Oh no! I created a PR against the wrong base:
 
 link:https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/changing-the-base-branch-of-a-pull-request[Change the base!]
-
-
-
-
-
-
